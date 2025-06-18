@@ -240,6 +240,247 @@ window.onload = () => {
 </body>
 </html>
 
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>神経衰弱（最大4人対戦）</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    #preview img { border:1px solid #aaa; margin:4px; width:60px; }
+    #preview button {
+      position:absolute; top:-10px; right:-10px;
+      background:red; color:white; border:none; border-radius:50%; cursor:pointer;
+    }
+    .card { width:80px; height:80px; margin:4px; display:inline-block; border:1px solid #ccc; background:#eee; cursor:pointer; background-size:cover; }
+    .hidden { background:#999 !important; }
+    #modalOverlay {
+      position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:none; justify-content:center; align-items:center; z-index:10;
+    }
+    #modalOverlay img { max-width:60%; border:5px solid white; border-radius:8px; }
+  </style>
+</head>
+<body>
+<h2 id="title">神経衰弱（最大4人対戦）</h2>
+<div>
+  <label><span id="langLabel">言語:</span>
+    <select id="lang" onchange="setLanguage()">
+      <option value="ja">日本語</option><option value="en">English</option>
+    </select>
+  </label>
+  <label><span id="countLabel">プレイヤー人数:</span>
+    <select id="playerCount" onchange="drawPlayerNames()">
+      <option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option>
+    </select>
+  </label>
+</div>
+<div id="playerNames" style="margin-top:10px;"></div>
+<p>
+  <input type="file" id="imgInput" accept="image/*">
+  <button onclick="addImage()" id="addBtn">＋画像を追加</button>
+  <button onclick="toggleUploaded()" id="toggleBtn">アップロード画像を表示</button>
+</p>
+<div id="preview"></div>
+<p><button id="startBtn" disabled onclick="startGame()">ゲームスタート</button></p>
+<hr>
+<div id="status"></div>
+<div id="gameArea"></div>
+
+<div id="modalOverlay" onclick="hideModal()"><img id="modalImg" src=""></div>
+
+<script>
+let imgs = [], isGameStarted = false, flipped = [], matched = [], cards = [];
+let turn = 0, scores = [], lang = "ja", playerNames = [];
+
+const text = {
+  ja: {
+    title: "神経衰弱（最大4人対戦）",
+    langLabel: "言語:",
+    countLabel: "プレイヤー人数:",
+    add: "＋画像を追加",
+    toggle: "アップロード画像を表示",
+    start: "ゲームスタート",
+    score: "スコア",
+    turn: "現在のプレイヤー",
+    win: "の勝ちです！",
+    draw: "引き分けです！"
+  },
+  en: {
+    title: "Photo Memory Game (Up to 4 Players)",
+    langLabel: "Language:",
+    countLabel: "Players:",
+    add: "+ Add Image",
+    toggle: "Toggle Uploaded Images",
+    start: "Start Game",
+    score: "Score",
+    turn: "Current Player",
+    win: " wins!",
+    draw: "It's a draw!"
+  }
+};
+
+function setLanguage() {
+  lang = document.getElementById("lang").value;
+  document.getElementById("title").textContent = text[lang].title;
+  document.getElementById("langLabel").textContent = text[lang].langLabel;
+  document.getElementById("countLabel").textContent = text[lang].countLabel;
+  document.getElementById("addBtn").textContent = text[lang].add;
+  document.getElementById("toggleBtn").textContent = text[lang].toggle;
+  document.getElementById("startBtn").textContent = text[lang].start;
+  drawPlayerNames();
+}
+
+function drawPlayerNames() {
+  const pn = document.getElementById("playerNames");
+  const count = parseInt(document.getElementById("playerCount").value);
+  pn.innerHTML = "";
+  playerNames = [];
+  for (let i = 0; i < count; i++) {
+    const label = document.createElement("label");
+    label.textContent = lang === "ja" ? `プレイヤー${i+1}：` : `Player ${i+1}:`;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = lang === "ja" ? `プレイヤー${i+1}` : `Player ${i+1}`;
+    input.id = `pname${i+1}`;
+    pn.appendChild(label);
+    pn.appendChild(input);
+    pn.appendChild(document.createElement("br"));
+  }
+}
+
+function addImage() {
+  const fileInput = document.getElementById("imgInput");
+  const file = fileInput.files[0];
+  if (file && file.type.startsWith("image/")) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      imgs.push(ev.target.result);
+      drawPreview();
+      document.getElementById("startBtn").disabled = imgs.length < 2;
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function drawPreview() {
+  const preview = document.getElementById("preview");
+  preview.innerHTML = "";
+  imgs.forEach((src, i) => {
+    const wrapper = document.createElement("div");
+    wrapper.style.display = "inline-block";
+    wrapper.style.position = "relative";
+    wrapper.style.margin = "4px";
+
+    const im = new Image();
+    im.src = src;
+    im.width = 60;
+
+    const del = document.createElement("button");
+    del.textContent = "×";
+    del.onclick = () => {
+      imgs.splice(i, 1);
+      drawPreview();
+      document.getElementById("startBtn").disabled = imgs.length < 2;
+    };
+
+    wrapper.appendChild(im);
+    wrapper.appendChild(del);
+    preview.appendChild(wrapper);
+  });
+}
+
+function toggleUploaded() {
+  const pre = document.getElementById("preview");
+  pre.style.display = pre.style.display === "none" ? "block" : "none";
+}
+
+function startGame() {
+  const area = document.getElementById("gameArea");
+  area.innerHTML = "";
+  const names = [];
+  const count = parseInt(document.getElementById("playerCount").value);
+  for (let i = 0; i < count; i++) {
+    const val = document.getElementById(`pname${i+1}`).value.trim();
+    names.push(val || (lang === "ja" ? `プレイヤー${i+1}` : `Player ${i+1}`));
+  }
+  playerNames = names;
+  scores = Array(count).fill(0);
+  turn = 0;
+  cards = [...imgs, ...imgs].sort(() => Math.random() - 0.5);
+  matched = Array(cards.length).fill(false);
+  isGameStarted = true;
+  drawStatus();
+  cards.forEach((src, idx) => {
+    const card = document.createElement("div");
+    card.className = "card hidden";
+    card.onclick = () => flipCard(idx, card);
+    area.appendChild(card);
+  });
+}
+
+function drawStatus() {
+  const s = playerNames.map((n, i) => `${n}: ${scores[i]}`).join(" / ");
+  document.getElementById("status").textContent =
+    `${text[lang].turn}: ${playerNames[turn]} ｜ ${text[lang].score}: ${s}`;
+}
+
+function flipCard(idx, el) {
+  if (!isGameStarted || flipped.length === 2 || matched[idx]) return;
+  el.classList.remove("hidden");
+  el.style.backgroundImage = `url('${cards[idx]}')`;
+  flipped.push({idx, el});
+  if (flipped.length === 2) checkMatch();
+}
+
+function checkMatch() {
+  const [a, b] = flipped;
+  if (cards[a.idx] === cards[b.idx]) {
+    matched[a.idx] = matched[b.idx] = true;
+    showModal(cards[a.idx]);
+    scores[turn]++;
+    setTimeout(() => {
+      flipped = [];
+      drawStatus();
+      if (matched.every(x => x)) {
+        declareWinner();
+      }
+    }, 600);
+  } else {
+    setTimeout(() => {
+      a.el.classList.add("hidden");
+      b.el.classList.add("hidden");
+      a.el.style.backgroundImage = b.el.style.backgroundImage = "";
+      flipped = [];
+      turn = (turn + 1) % scores.length;
+      drawStatus();
+    }, 800);
+  }
+}
+
+function declareWinner() {
+  const max = Math.max(...scores);
+  const winners = playerNames.filter((_, i) => scores[i] === max);
+  const msg = winners.length === 1 ? winners[0] + text[lang].win : text[lang].draw;
+  alert(msg);
+}
+
+function showModal(src) {
+  const overlay = document.getElementById("modalOverlay");
+  document.getElementById("modalImg").src = src;
+  overlay.style.display = "flex";
+}
+
+function hideModal() {
+  document.getElementById("modalOverlay").style.display = "none";
+}
+
+window.onload = () => {
+  setLanguage();
+};
+</script>
+</body>
+</html>
+
   cards = [...imgs, ...imgs].sort(() => Ma"none";
 }
 
